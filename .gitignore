@@ -6,6 +6,10 @@
 # Folders
 _obj
 _test
+bin
+log
+src/github.com
+src/code.google.com
 
 # Architecture specific extensions/prefixes
 *.[568vq]
