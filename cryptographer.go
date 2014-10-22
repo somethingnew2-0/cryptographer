@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/url"
 	"os"
@@ -47,8 +48,8 @@ func NewConfigManager(uri *url.URL, kr io.Reader) (config.ConfigManager, error) 
 func main() {
 	flag.Parse()
 
-	kr, err := os.Open(getopt("KEY_RING", "/var/usr/keyring.gpg"))
-	defer kr.Close()
+	keyRing, err := os.Open(getopt("KEY_RING", "/var/usr/keyring.gpg"))
+	defer keyRing.Close()
 	assert(err)
 
 	client, err := docker.NewClient(getopt("DOCKER_HOST", "unix:///var/run/docker.sock"))
@@ -57,15 +58,20 @@ func main() {
 	uri, err := url.Parse(flag.Arg(0))
 	assert(err)
 
-	cm, err := NewConfigManager(uri, kr)
+	manager, err := NewConfigManager(uri, keyRing)
 	assert(err)
 
 	containers, err := client.ListContainers(docker.ListContainersOptions{})
 	for _, container := range containers {
 		fmt.Println("ID: ", container.ID)
-		value, err := cm.Get(container.ID)
-		assert(err)
+		entries, err := manager.List(fmt.Sprintf("/%s", container.ID))
+		if err != nil {
+			log.Println("Can't find directory for container: ", container.ID, err)
+			continue
+		}
 
-		fmt.Println("Value: ", value)
+		for _, entry := range entries {
+			manager.Get(entry)
+		}
 	}
 }
