@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"path"
 
 	"github.com/cenkalti/backoff"
 	"github.com/fsouza/go-dockerclient"
@@ -37,7 +38,7 @@ func NewConfigManager(uri *url.URL, kr io.Reader) (config.ConfigManager, error) 
 		"etcd":   config.NewEtcdConfigManager,
 	}[uri.Scheme]
 	if factory == nil {
-		log.Fatal("unrecognized registry backend: ", uri.Scheme)
+		log.Fatal("cryptographer: unrecognized registry backend: ", uri.Scheme)
 	}
 	log.Println("cryptographer: Using", uri.Scheme, "key value backend at", uri)
 	uri.Scheme = "http"
@@ -47,6 +48,8 @@ func NewConfigManager(uri *url.URL, kr io.Reader) (config.ConfigManager, error) 
 
 func main() {
 	flag.Parse()
+
+	secrets := getopt("SECRETS_DIR", "/secrets")
 
 	keyRing, err := os.Open(getopt("KEY_RING", "/var/usr/keyring.gpg"))
 	defer keyRing.Close()
@@ -66,12 +69,25 @@ func main() {
 		fmt.Println("ID: ", container.ID)
 		entries, err := manager.List(fmt.Sprintf("/%s", container.ID))
 		if err != nil {
-			log.Println("Can't find directory for container: ", container.ID, err)
+			log.Println("cryptographer: can't find directory in config manager for container: ", container.ID, err)
+			continue
+		}
+
+		containerSecrets := path.Join(secrets, container.ID)
+		err = os.MkdirAll(containerSecrets, 0600)
+		if err != nil {
+			log.Println("cryptographer: error creating container secrets dir: ", container.ID, err)
 			continue
 		}
 
 		for _, entry := range entries {
-			manager.Get(entry)
+			value, err := manager.Get(fmt.Sprintf("/%s/%s", container.ID, entry))
+			if err != nil {
+				log.Println("cryptographer: error creating container secrets dir: ", container.ID, err)
+				continue
+			}
+			err = ioutil.WriteFile(path.Join(containerSecrets, entry), value, 0600)
+			assert(err)
 		}
 	}
 }
